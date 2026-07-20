@@ -1,0 +1,25 @@
+/* Quick fix for iPhone black screen issue */
+.transfer-container {
+    background: rgba(255, 255, 255, 0.05) !important;
+    padding: 2rem !important;
+    border-radius: 12px !important;
+    min-height: 200px !important;
+}
+
+.subtitle {
+    color: white !important;
+    opacity: 1 !important;
+}
+
+/* Ensure main container is visible */
+.app-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    min-height: 100vh !important;
+}
+
+/* Fix drag drop zone visibility */
+.drag-drop-zone {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 2px dashed rgba(255, 255, 255, 0.3) !important;
+    color: white !important;
+}

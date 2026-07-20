@@ -1,0 +1,74 @@
+{
+  "name": "aerosend",
+  "version": "1.0.0",
+  "description": "Peer-to-peer file transfer that sends less than the file - content-addressed dedup, streams to disk, end-to-end encrypted",
+  "main": "electron/main.js",
+  "private": false,
+  "scripts": {
+    "dev": "node server/index.js",
+    "start": "node server/index.js",
+    "build": "vite build",
+    "electron:dev": "set NODE_ENV=development && electron electron/main.js",
+    "electron": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "test": "node test-brutal.mjs"
+  },
+  "build": {
+    "appId": "com.aerosend.app",
+    "productName": "AeroSend",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "lucide-react": "^0.294.0",
+    "qrcode": "^1.5.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "socket.io": "^4.7.2",
+    "socket.io-client": "^4.7.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3",
+    "node-wifi": "^2.0.16",
+    "vite": "^5.0.0"
+  },
+  "license": "Apache-2.0",
+  "author": "Arun Sunny",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pluginfer/aerosend.git"
+  },
+  "keywords": [
+    "file-transfer",
+    "p2p",
+    "webrtc",
+    "dedup",
+    "content-defined-chunking",
+    "fastcdc",
+    "local-network",
+    "encryption"
+  ]
+}

@@ -1,0 +1,20 @@
+node_modules/
+dist/
+release/
+
+# Local build snapshots kept on disk, not in history
+OLD-WORKING/
+*.zip
+
+# Scratch pages used while debugging
+debug.html
+mobiletest.html
+sockettest.html
+vanilla.html
+
+.DS_Store
+*.log
+.env
+.env.local
+.vscode/
+.idea/

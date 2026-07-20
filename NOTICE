@@ -1,0 +1,8 @@
+AeroSend
+Copyright 2026 Arun Sunny
+
+This product includes software developed by Arun Sunny.
+
+Content-defined chunking is based on FastCDC:
+  Xia et al., "FastCDC: a Fast and Efficient Content-Defined Chunking
+  Approach for Data Deduplication", USENIX ATC 2016.
