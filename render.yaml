@@ -6,7 +6,9 @@ services:
     name: aerosend-signal
     runtime: node
     plan: free
-    buildCommand: npm install --omit=dev
+    # Must build: signal.js serves dist/, so without this the deploy
+    # would start fine and serve nothing.
+    buildCommand: npm install && npm run build
     startCommand: node server/signal.js
     healthCheckPath: /healthz
     envVars:

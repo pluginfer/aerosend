@@ -49,6 +49,44 @@ The scheduler uses rarest-first selection and treats the origin as a last
 resort — if any receiver can serve a chunk, it does, so the sender's cost stays
 flat as the swarm grows.
 
+## Sending over the internet
+
+By default both devices must be on the same network, because the signalling
+server runs on the sending machine. To transfer between networks, deploy the
+signalling server once:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pluginfer/aerosend)
+
+One deploy serves both the app and signalling - `server/signal.js` serves the
+built frontend when `dist/` is present. Free tier is enough: signalling only
+relays connection setup, a few KB per transfer, because file bytes go peer to
+peer and never touch the server.
+
+Running it yourself:
+
+```bash
+npm run build
+npm run signal          # serves app + signalling on PORT (default 8080)
+```
+
+### Speed, honestly
+
+Over the internet you are limited by your upload bandwidth - typically
+10-50 Mbps against 100-1000 Mbps on a LAN. So it is slower.
+
+Dedup matters *more* there, not less: skipping 54 MB of a 64 MB folder saves a
+couple of seconds on WiFi, but minutes on a home connection.
+
+### TURN, and why it is off by default
+
+STUN gets a direct peer connection on most home networks. Symmetric NAT and
+carrier-grade NAT need a TURN relay, configured with `TURN_URL`,
+`TURN_USERNAME` and `TURN_CREDENTIAL`.
+
+Be aware what that means: **a TURN server relays every byte**. A 5 GB transfer
+costs 5 GB of relay bandwidth, unlike the signalling server which costs
+kilobytes. That is a real bill, so it stays opt-in.
+
 ## How it compares
 
 |  | Dedup | Zero install | Multi-GB files | Ad-hoc send |
