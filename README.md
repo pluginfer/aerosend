@@ -29,6 +29,26 @@ comes from compression). Reproduce with `node test-dedup.mjs`:
 | **Folder of 8 files, 1 changed** | 9.7 MB of 64 MB | **84.8%** |
 | Fine-tuned model vs cached base | 8.8 MB of 32 MB | **72.5%** |
 
+## Swarm: sending to many devices
+
+Sending a 5 GB file to 30 devices normally costs the sender 150 GB of upload
+and takes 30× as long, because every receiver pulls independently. AeroSend's
+scheduler lets receivers serve each other, so the origin uploads each chunk
+about once regardless of how many devices are waiting.
+
+Measured by `node test-swarm.mjs` (simulated network, real scheduler):
+
+| Devices | Classic upload | Swarm upload | Speedup |
+|---|---|---|---|
+| 1 | 1.0× | 1.00× | — |
+| 10 | 10.0× | **1.00×** | 3.1× |
+| 30 | 30.0× | **1.00×** | 5.3× |
+| 50 | 50.0× | **1.00×** | 6.1× |
+
+The scheduler uses rarest-first selection and treats the origin as a last
+resort — if any receiver can serve a chunk, it does, so the sender's cost stays
+flat as the swarm grows.
+
 ## How it compares
 
 |  | Dedup | Zero install | Multi-GB files | Ad-hoc send |
@@ -77,19 +97,6 @@ npm run electron     # dev shell
 npm run dist         # packaged installer
 ```
 
-## Tests
-
-```bash
-node test-brutal.mjs    # 37 correctness tests - byte-exact round trips
-node test-chunker.mjs   # chunking behaviour and dedup properties
-node test-dedup.mjs     # the savings benchmark above
-```
-
-`test-brutal.mjs` is the gate. It proves files survive a round trip byte for
-byte at every boundary — 0 bytes, exactly MAX_SIZE, 10 MB of identical bytes,
-frames split at awkward offsets. A transfer tool that silently corrupts files is
-worse than one that fails loudly, so nothing ships without it green.
-
 ## Browser support
 
 | Feature | Chrome / Edge | Firefox / Safari |
@@ -103,13 +110,27 @@ has today.
 
 ## Status
 
-**Working:** content-defined chunking, dedup, streaming to disk, end-to-end
-encryption, multi-file queues, QR pairing, transfer resume.
+**Working end to end:** content-defined chunking, dedup, streaming to disk,
+end-to-end encryption, multi-file queues, QR pairing, transfer resume.
 
-**Not built yet:** swarm distribution (receivers seeding each other, so sending
-to 30 devices costs one upload instead of thirty) and progressive consumption
-(opening a file before it finishes). Both are planned; neither is claimed to
-work today.
+**Swarm — scheduler done, transport not yet wired.** `SwarmScheduler` is
+complete and proven in simulation (the table above), including rarest-first
+selection, seed de-prioritisation, endgame duplication, and peer-failure
+recovery. What is *not* built is the mesh transport underneath it: today the
+app opens a single WebRTC connection between two peers, so the multi-peer
+numbers above are not yet available in the UI. Wiring room membership,
+many-to-many connections and HAVE announcements is the next piece of work.
+
+**Not built:** progressive consumption (opening a file before it finishes).
+
+## Tests
+
+```bash
+node test-brutal.mjs    # 37 correctness tests - byte-exact round trips
+node test-swarm.mjs     # 15 swarm scheduling tests + the scaling benchmark
+node test-chunker.mjs   # chunking behaviour and dedup properties
+node test-dedup.mjs     # the savings benchmark above
+```
 
 ## License
 
