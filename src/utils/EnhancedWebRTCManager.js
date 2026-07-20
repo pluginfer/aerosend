@@ -272,7 +272,34 @@ export class EnhancedWebRTCManager {
         this.currentFileIndex = 0;
         this.isTransferring = true;
 
+        // The session key is exchanged asynchronously over the signalling
+        // socket. Starting mid-exchange means the sender may encrypt while the
+        // receiver is still expecting plaintext (or the reverse) - which
+        // corrupts data rather than failing loudly. Settle it first.
+        await this.waitForEncryption();
+
         await this.sendNextFile();
+    }
+
+    /**
+     * Resolve once encryption is agreed, or after a timeout - in which case we
+     * proceed unencrypted, which both sides will do consistently because the
+     * flag is read per message on each side.
+     */
+    waitForEncryption(timeoutMs = 5000) {
+        if (this.encryption.isEncrypted) return Promise.resolve(true);
+        return new Promise(resolve => {
+            const started = Date.now();
+            const tick = () => {
+                if (this.encryption.isEncrypted) return resolve(true);
+                if (Date.now() - started > timeoutMs) {
+                    console.warn('⚠️ Encryption not established; sending unencrypted');
+                    return resolve(false);
+                }
+                setTimeout(tick, 100);
+            };
+            tick();
+        });
     }
 
     async sendNextFile() {
@@ -534,6 +561,14 @@ export class EnhancedWebRTCManager {
      * Chunk lengths come from the manifest, so no per-chunk header is needed.
      */
     acceptFrame(bytes) {
+        // A frame can arrive before the manifest if messages are reordered or
+        // a previous transfer was aborted. Without this guard the accumulator
+        // is undefined and the whole channel dies on a TypeError.
+        if (!this.needList || this.needIdx >= this.needList.length) {
+            console.warn('⚠️ Ignoring chunk frame received outside a transfer');
+            return;
+        }
+
         this.acc.push(bytes);
         this.accLen += bytes.byteLength;
 
