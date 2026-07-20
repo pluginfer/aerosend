@@ -64,9 +64,20 @@ function countRooms() {
 
 io.on('connection', (socket) => {
     socket.on('join', (roomId) => {
+        // A swarm needs a roster, not just "someone arrived". The joining peer
+        // gets everyone already present so it can open connections to all of
+        // them; without this a third device can only ever see the one peer that
+        // happened to join after it.
+        const existing = [...(io.sockets.adapter.rooms.get(roomId) || [])]
+            .filter(id => id !== socket.id);
+
         socket.join(roomId);
+        socket.data.roomId = roomId;
+
         const size = io.sockets.adapter.rooms.get(roomId)?.size || 0;
-        console.log(`join ${roomId} (${size})`);
+        console.log(`join ${roomId} (${size} peers)`);
+
+        socket.emit('room-peers', existing);
         socket.to(roomId).emit('user-connected', socket.id);
     });
 
@@ -76,9 +87,8 @@ io.on('connection', (socket) => {
     ['offer', 'answer', 'ice-candidate', 'public-key', 'session-key'].forEach(relay);
 
     socket.on('disconnect', () => {
-        for (const room of socket.rooms) {
-            if (room !== socket.id) socket.to(room).emit('user-disconnected', socket.id);
-        }
+        const roomId = socket.data?.roomId;
+        if (roomId) socket.to(roomId).emit('user-disconnected', socket.id);
     });
 });
 

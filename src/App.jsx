@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import { DragDropZone } from './components/DragDropZone';
 import { HotspotManager } from './components/HotspotManager';
-import { EnhancedWebRTCManager } from './utils/EnhancedWebRTCManager';
+import { SwarmSession } from './utils/swarm-transport';
 import { Wifi, ArrowRight, Home, Lock, Send, Sun, Moon } from 'lucide-react';
 
 const fmtBytes = (n) => {
@@ -34,6 +34,7 @@ function App() {
     // The dedup result - previously only a console.log, which meant the single
     // most interesting thing this app does was invisible to users.
     const [dedup, setDedup] = useState(null);
+    const [peerCount, setPeerCount] = useState(0);
 
     // Theme: explicit choice wins, otherwise follow the OS.
     const [theme, setTheme] = useState(() => {
@@ -69,35 +70,27 @@ function App() {
     }, []);
 
     const initWebRTC = (id) => {
-        if (webrtcRef.current) {
-            webrtcRef.current.disconnect();
-        }
+        if (webrtcRef.current) webrtcRef.current.disconnect();
 
-        webrtcRef.current = new EnhancedWebRTCManager(
-            id,
-            (newStatus) => {
-                setStatus(newStatus);
-                if (newStatus.includes('Connected') || newStatus.includes('Ready')) {
-                    setIsConnected(true);
-                }
+        // One mesh session handles any number of peers - two devices is just a
+        // two-node swarm, so there is no separate 1:1 path to keep in sync.
+        webrtcRef.current = new SwarmSession(id, {
+            onStatus: (s) => {
+                setStatus(s);
+                if (/connected|Ready|Seeding|Receiving/i.test(s)) setIsConnected(true);
             },
-            (progress) => {
-                setTransferProgress(Math.round(progress * 100));
-            },
-            (fileBlob, fileName) => {
-                // Auto-download received file
-                const url = window.URL.createObjectURL(fileBlob);
+            onProgress: (p) => setTransferProgress(Math.round(p * 100)),
+            onPeers: (n) => setPeerCount(n),
+            onFile: (blob, name) => {
+                const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                a.click();
+                a.href = url; a.download = name; a.click();
                 window.URL.revokeObjectURL(url);
             },
-            (encrypted) => setIsEncrypted(encrypted),
-            (stats) => setDedup(stats)
-        );
+            onStats: (stats) => setDedup(stats),
+        });
 
-        webrtcRef.current.initialize();
+        webrtcRef.current.start();
     };
 
     const handleCreateRoom = () => {
@@ -155,7 +148,9 @@ function App() {
     const handleSend = async () => {
         if (!webrtcRef.current || selectedFiles.length === 0) return;
         try {
-            await webrtcRef.current.sendFiles(selectedFiles);
+            for (const f of selectedFiles) {
+                await webrtcRef.current.seed(f);
+            }
         } catch (err) {
             // Previously this rejected silently, so a failure looked exactly
             // like the button doing nothing. Always say something.
@@ -186,6 +181,7 @@ function App() {
         setStatus('Ready');
         setIsEncrypted(false);
         setDedup(null);
+        setPeerCount(0);
     };
 
     return (
@@ -327,7 +323,9 @@ function App() {
 
                         <div className="footer-status">
                             {isConnected ? <span className="status-dot online"></span> : <span className="status-dot offline"></span>}
-                            {isConnected ? 'Peer Connected' : 'Waiting...'}
+                            {isConnected
+                                ? `${peerCount} peer${peerCount === 1 ? '' : 's'} connected`
+                                : 'Waiting for peers...'}
                         </div>
                     </>
                 )}
