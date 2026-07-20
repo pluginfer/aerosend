@@ -18,3 +18,6 @@ vanilla.html
 .env.local
 .vscode/
 .idea/
+
+# self-signed dev certificates
+.certs/

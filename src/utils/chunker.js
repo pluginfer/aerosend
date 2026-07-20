@@ -18,6 +18,8 @@
  * so it is derived deterministically from a fixed seed rather than random.
  */
 
+import { sha256Hex } from './sha256.js';
+
 const SEED = 0x9e3779b9; // golden-ratio constant, arbitrary but fixed forever
 
 /** xorshift32 - deterministic, identical in every JS engine. */
@@ -89,13 +91,20 @@ export function findCutPoint(buf, start = 0, end = buf.length) {
  * devices can compare what they hold without exchanging any data.
  */
 export async function hashChunk(bytes) {
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    const view = new Uint8Array(digest);
-    let hex = '';
-    for (let i = 0; i < view.length; i++) {
-        hex += view[i].toString(16).padStart(2, '0');
+    // crypto.subtle only exists in a secure context, so a phone on
+    // http://192.168.1.x has none. Both peers must derive identical addresses
+    // or nothing ever dedups, so the fallback is real SHA-256 in JS rather
+    // than a different (faster) hash.
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        const view = new Uint8Array(digest);
+        let hex = '';
+        for (let i = 0; i < view.length; i++) {
+            hex += view[i].toString(16).padStart(2, '0');
+        }
+        return hex;
     }
-    return hex;
+    return sha256Hex(bytes);
 }
 
 /**

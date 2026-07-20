@@ -3,7 +3,14 @@ import QRCode from 'qrcode';
 import { DragDropZone } from './components/DragDropZone';
 import { HotspotManager } from './components/HotspotManager';
 import { EnhancedWebRTCManager } from './utils/EnhancedWebRTCManager';
-import { Wifi, ArrowRight, Home, Lock } from 'lucide-react';
+import { Wifi, ArrowRight, Home, Lock, Send, Sun, Moon } from 'lucide-react';
+
+const fmtBytes = (n) => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1048576) return `${(n / 1024).toFixed(0)} KB`;
+    if (n < 1073741824) return `${(n / 1048576).toFixed(1)} MB`;
+    return `${(n / 1073741824).toFixed(2)} GB`;
+};
 
 function App() {
     // Room & Connection State
@@ -23,6 +30,22 @@ function App() {
 
     // Encryption State
     const [isEncrypted, setIsEncrypted] = useState(false);
+
+    // The dedup result - previously only a console.log, which meant the single
+    // most interesting thing this app does was invisible to users.
+    const [dedup, setDedup] = useState(null);
+
+    // Theme: explicit choice wins, otherwise follow the OS.
+    const [theme, setTheme] = useState(() => {
+        const saved = localStorage.getItem('aerosend-theme');
+        if (saved) return saved;
+        return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    });
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('aerosend-theme', theme);
+    }, [theme]);
 
     const webrtcRef = useRef(null);
 
@@ -70,7 +93,8 @@ function App() {
                 a.click();
                 window.URL.revokeObjectURL(url);
             },
-            (encrypted) => setIsEncrypted(encrypted)
+            (encrypted) => setIsEncrypted(encrypted),
+            (stats) => setDedup(stats)
         );
 
         webrtcRef.current.initialize();
@@ -87,13 +111,13 @@ function App() {
         fetch('/api/ip')
             .then(res => res.ok ? res.json() : Promise.reject())
             .then(data => {
-                const shareUrl = `http://${data.ip}:3000/?room=${newRoomId}`;
+                const shareUrl = `${window.location.protocol}//${data.ip}:3000/?room=${newRoomId}`;
                 console.log('📱 QR Code URL:', shareUrl);
                 return QRCode.toDataURL(shareUrl);
             })
             .catch(err => {
                 console.warn('Using fallback for QR code:', err);
-                const shareUrl = `http://${window.location.hostname}:3000/?room=${newRoomId}`;
+                const shareUrl = `${window.location.protocol}//${window.location.hostname}:3000/?room=${newRoomId}`;
                 return QRCode.toDataURL(shareUrl);
             })
             .then(url => setQrCodeUrl(url))
@@ -124,18 +148,26 @@ function App() {
     const handleClearAll = () => {
         setSelectedFiles([]);
         setTransferProgress(0);
+        setDedup(null);
         setStatus('Ready to Transfer');
     };
 
     const handleSend = async () => {
-        if (webrtcRef.current && selectedFiles.length > 0) {
+        if (!webrtcRef.current || selectedFiles.length === 0) return;
+        try {
             await webrtcRef.current.sendFiles(selectedFiles);
+        } catch (err) {
+            // Previously this rejected silently, so a failure looked exactly
+            // like the button doing nothing. Always say something.
+            console.error('Transfer failed:', err);
+            setStatus(`Transfer failed: ${err?.message || err}`);
         }
     };
 
     const handleReset = () => {
         setSelectedFiles([]);
         setTransferProgress(0);
+        setDedup(null);
         setStatus('Ready to Transfer');
     };
 
@@ -153,14 +185,26 @@ function App() {
         setManualCode('');
         setStatus('Ready');
         setIsEncrypted(false);
+        setDedup(null);
     };
 
     return (
         <div className="app-container">
             <div className="glass-panel animate-fade-in-up">
                 <header className="header">
-                    <h1 className="title">AeroSend</h1>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h1 className="title">
+                        <span className="mark"><Send size={16} /></span>
+                        AeroSend
+                    </h1>
+                    <div className="header-actions">
+                        <button
+                            className="btn-icon"
+                            onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+                            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+                            aria-label="Toggle theme"
+                        >
+                            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+                        </button>
                         {isEncrypted && (
                             <div className="encryption-badge" title="End-to-end encrypted">
                                 <Lock size={16} />
@@ -247,6 +291,18 @@ function App() {
                                         Send {selectedFiles.length} File{selectedFiles.length > 1 ? 's' : ''}
                                         <ArrowRight size={20} style={{ marginLeft: '8px' }} />
                                     </button>
+                                )}
+
+                                {dedup && dedup.savedPct > 0.5 && (
+                                    <div className="dedup-card">
+                                        <div className="dedup-headline">
+                                            {fmtBytes(dedup.wire)} instead of {fmtBytes(dedup.total)}
+                                        </div>
+                                        <div className="dedup-detail">
+                                            {dedup.savedPct.toFixed(0)}% skipped &mdash; already on the other device.
+                                            Saved {fmtBytes(dedup.total - dedup.wire)}.
+                                        </div>
+                                    </div>
                                 )}
 
                                 {transferProgress > 0 && transferProgress < 100 && (

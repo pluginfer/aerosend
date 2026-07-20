@@ -3,18 +3,35 @@
  * Provides end-to-end encryption for file transfers
  */
 
+/**
+ * Web Crypto is only exposed in a secure context: HTTPS, or localhost.
+ * A phone opening http://192.168.1.x:3000 is NOT a secure context, so
+ * crypto.subtle is undefined there. Calling it threw before the socket was
+ * ever created, which looked like "stuck on Joining Room" rather than a
+ * crypto failure. Check once, up front, and degrade honestly.
+ */
+export const cryptoAvailable = () =>
+    typeof window !== 'undefined' &&
+    typeof window.isSecureContext !== 'undefined' &&
+    window.isSecureContext &&
+    !!window.crypto?.subtle;
+
 export class EncryptionManager {
     constructor() {
         this.keyPair = null;
         this.sessionKey = null;
         this.peerPublicKey = null;
         this.isEncrypted = false;
+        this.available = cryptoAvailable();
+        this.unavailableReason = this.available ? null
+            : 'Web Crypto needs HTTPS or localhost; this page is served over plain HTTP';
     }
 
     /**
      * Generate RSA-OAEP key pair for key exchange
      */
     async generateKeyPair() {
+        if (!this.available) return null;
         this.keyPair = await window.crypto.subtle.generateKey(
             {
                 name: "RSA-OAEP",
@@ -32,6 +49,7 @@ export class EncryptionManager {
      * Generate AES-GCM session key for data encryption
      */
     async generateSessionKey() {
+        if (!this.available) return null;
         this.sessionKey = await window.crypto.subtle.generateKey(
             {
                 name: "AES-GCM",
@@ -47,6 +65,7 @@ export class EncryptionManager {
      * Export public key for transmission to peer
      */
     async exportPublicKey() {
+        if (!this.available) return null;
         if (!this.keyPair) {
             await this.generateKeyPair();
         }
@@ -116,6 +135,7 @@ export class EncryptionManager {
      * Encrypt data chunk
      */
     async encryptChunk(data) {
+        if (!this.available || !this.isEncrypted) return data;
         if (!this.sessionKey) {
             throw new Error("Session key not initialized");
         }
@@ -142,6 +162,7 @@ export class EncryptionManager {
      * Decrypt data chunk
      */
     async decryptChunk(encryptedData) {
+        if (!this.available || !this.isEncrypted) return encryptedData;
         if (!this.sessionKey) {
             throw new Error("Session key not initialized");
         }

@@ -12,7 +12,7 @@ import { buildManifest } from './chunker.js';
 import { chunkStore } from './chunk-store.js';
 
 export class EnhancedWebRTCManager {
-    constructor(roomId, onStatusChange, onProgress, onFileReceived, onEncryptionStatus) {
+    constructor(roomId, onStatusChange, onProgress, onFileReceived, onEncryptionStatus, onDedupStats) {
         this.socket = null;
         this.peerConnection = null;
         this.dataChannel = null;
@@ -25,6 +25,7 @@ export class EnhancedWebRTCManager {
         this.onProgress = onProgress || (() => { });
         this.onFileReceived = onFileReceived || (() => { });
         this.onEncryptionStatus = onEncryptionStatus || (() => { });
+        this.onDedupStats = onDedupStats || (() => { });
 
         // File queue for multi-file transfers
         this.fileQueue = [];
@@ -63,8 +64,13 @@ export class EnhancedWebRTCManager {
         await transferStorage.cleanupOldTransfers();
         console.log('💾 Storage initialized');
 
+        await this.loadIceServers();
+
         console.log('📡 Connecting to Socket.io server...');
-        this.socket = io();
+        // Same-origin in local dev; VITE_SIGNAL_URL points at the deployed
+        // signalling server when the app is hosted separately (e.g. Netlify).
+        const signalUrl = import.meta.env?.VITE_SIGNAL_URL;
+        this.socket = signalUrl ? io(signalUrl, { transports: ['websocket', 'polling'] }) : io();
 
         this.socket.on('connect', () => {
             console.log('✅ Connected to signaling server, ID:', this.socket.id);
@@ -115,6 +121,24 @@ export class EnhancedWebRTCManager {
         });
     }
 
+    /**
+     * Pull ICE servers from the signalling host. Without TURN a direct peer
+     * connection still works on most networks; behind symmetric or
+     * carrier-grade NAT it will not, and the transfer simply never connects.
+     */
+    async loadIceServers() {
+        const base = import.meta.env?.VITE_SIGNAL_URL || '';
+        try {
+            const res = await fetch(`${base}/api/ice`);
+            if (!res.ok) throw new Error(String(res.status));
+            const cfg = await res.json();
+            this.iceServers = cfg.iceServers;
+            console.log(cfg.turn ? '🌍 TURN relay available' : '🌍 STUN only (direct P2P required)');
+        } catch {
+            console.warn('Could not fetch ICE config; using public STUN');
+        }
+    }
+
     async startConnection(targetId) {
         this.targetId = targetId || this.targetId;
         if (!this.targetId) {
@@ -143,13 +167,15 @@ export class EnhancedWebRTCManager {
     }
 
     createPeerConnection() {
-        const configuration = {
-            iceServers: [
+        // iceServers is fetched at startup so TURN credentials live on the
+        // server and can rotate without a rebuild. Falls back to public STUN,
+        // which is enough for a LAN and for most home networks.
+        this.peerConnection = new RTCPeerConnection({
+            iceServers: this.iceServers || [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
-        this.peerConnection = new RTCPeerConnection(configuration);
+                { urls: 'stun:stun1.l.google.com:19302' },
+            ],
+        });
 
         this.peerConnection.onicecandidate = (event) => {
             if (event.candidate && this.targetId) {
@@ -226,6 +252,15 @@ export class EnhancedWebRTCManager {
     // ==================== ENCRYPTION ====================
 
     async initiateEncryption() {
+        // Over plain HTTP on a LAN IP there is no Web Crypto, so there is no
+        // key exchange to start. Transfer still works, unencrypted, and the UI
+        // says so rather than showing a padlock that means nothing.
+        if (!this.encryption.available) {
+            console.warn(`🔓 ${this.encryption.unavailableReason}. Transferring unencrypted.`);
+            this.onEncryptionStatus(false);
+            return;
+        }
+
         // Exchange public keys
         const publicKey = await this.encryption.exportPublicKey();
         this.socket.emit('public-key', {
@@ -287,6 +322,7 @@ export class EnhancedWebRTCManager {
      * flag is read per message on each side.
      */
     waitForEncryption(timeoutMs = 5000) {
+        if (!this.encryption.available) return Promise.resolve(false);
         if (this.encryption.isEncrypted) return Promise.resolve(true);
         return new Promise(resolve => {
             const started = Date.now();
@@ -355,6 +391,11 @@ export class EnhancedWebRTCManager {
 
         const sendBytes = unique.reduce((s, c) => s + c.length, 0);
         const savedPct = file.size > 0 ? (1 - sendBytes / file.size) * 100 : 0;
+
+        this.onDedupStats({
+            name: file.name, direction: 'send',
+            wire: sendBytes, total: file.size, savedPct,
+        });
 
         if (savedPct > 0.5) {
             console.log(
@@ -471,7 +512,9 @@ export class EnhancedWebRTCManager {
 
     async handleDataMessage(data) {
         if (typeof data === 'string') {
-            const msg = JSON.parse(data);
+            // `let`, not `const`: an encrypted control frame is unwrapped in
+            // place below.
+            let msg = JSON.parse(data);
 
             if (msg.type === 'encrypted-control') {
                 const buf = this.encryption.base64ToArrayBuffer(msg.data);
@@ -526,6 +569,11 @@ export class EnhancedWebRTCManager {
             .filter(c => held.has(c.hash))
             .reduce((s, c) => s + c.length, 0);
         const savedPct = manifest.size > 0 ? (haveBytes / manifest.size) * 100 : 0;
+
+        this.onDedupStats({
+            name: manifest.name, direction: 'receive',
+            wire: manifest.size - haveBytes, total: manifest.size, savedPct,
+        });
 
         if (savedPct > 0.5) {
             console.log(

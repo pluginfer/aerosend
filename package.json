@@ -6,13 +6,14 @@
   "private": false,
   "scripts": {
     "dev": "node server/index.js",
-    "start": "node server/index.js",
+    "start": "node server/signal.js",
     "build": "vite build",
     "electron:dev": "set NODE_ENV=development && electron electron/main.js",
     "electron": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "test": "node test-brutal.mjs"
+    "test": "node test-brutal.mjs",
+    "signal": "node server/signal.js"
   },
   "build": {
     "appId": "com.aerosend.app",
@@ -44,6 +45,7 @@
     "qrcode": "^1.5.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "selfsigned": "^5.5.0",
     "socket.io": "^4.7.2",
     "socket.io-client": "^4.7.2",
     "uuid": "^9.0.1"

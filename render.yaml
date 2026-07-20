@@ -1,0 +1,25 @@
+# One-click deploy for the signalling server.
+# Render's free tier is enough: this relays connection setup only - a few KB
+# per transfer - because file bytes go peer to peer and never touch it.
+services:
+  - type: web
+    name: aerosend-signal
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: node server/signal.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: CORS_ORIGIN
+        value: "*"
+      # Optional TURN relay, for networks where direct P2P fails.
+      # Warning: TURN relays EVERY byte, so a 5GB transfer costs 5GB of relay
+      # bandwidth. Leave unset unless you need it.
+      # - key: TURN_URL
+      #   sync: false
+      # - key: TURN_USERNAME
+      #   sync: false
+      # - key: TURN_CREDENTIAL
+      #   sync: false
