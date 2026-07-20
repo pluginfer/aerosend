@@ -2,8 +2,16 @@
 
 **Peer-to-peer file transfer that sends less than the file.**
 
-Free, open source, no accounts, no cloud. Runs in a browser — the receiving
-device installs nothing.
+Free, open source, no accounts. Runs in a browser — the receiving device
+installs nothing.
+
+### → [aerosend-signal.onrender.com](https://aerosend-signal.onrender.com)
+
+Open it on two devices, create a room on one, scan the QR from the other.
+Works on the same WiFi or across the internet. Files go peer to peer and never
+touch the server.
+
+*(Free tier: if it has been idle a while, the first load takes ~40s to wake.)*
 
 ---
 
@@ -51,9 +59,9 @@ flat as the swarm grows.
 
 ## Sending over the internet
 
-By default both devices must be on the same network, because the signalling
-server runs on the sending machine. To transfer between networks, deploy the
-signalling server once:
+A hosted instance runs at
+**[aerosend-signal.onrender.com](https://aerosend-signal.onrender.com)** — use
+it directly, or deploy your own so nothing depends on someone else's server:
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pluginfer/aerosend)
 
